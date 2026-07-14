@@ -15,6 +15,8 @@ This repo is **inference-only**. It loads the published adapter from Hugging Fac
 - **Multi-turn** — the conversation holds across many turns
 - **Tool calling** — structured tool calls (mock-executed here) rendered as cards, then spoken
 - **Text input** — type a message mid-conversation
+- **Voice toggle** — turn TTS on/off per session (off shows text only)
+- **Transparency** — view the exact system prompt and tools the model runs with (read-only)
 
 ## How it runs
 
@@ -81,6 +83,11 @@ The engine's live-experience guards are on by default and tunable via environmen
 | `GEMMA_FLOOR_K` | `3.0` | adaptive silence threshold = noise floor × K |
 | `GEMMA_OPEN_NUDGE` | `3.0` | nudge toward taking a turn after the user goes quiet (0 disables) |
 | `GEMMA_AGC_TARGET` | `0.12` | input loudness normalization target (0 disables) |
+| `CARTESIA_SPEED` | `1.5` | speech speed (0.6–1.5); sonic adjusts rate, not pitch |
+
+In a noisy room, raising `GEMMA_BARGE_RMS`, `GEMMA_VOICED_MIN`, and `GEMMA_FLOOR_K` makes the
+energy gate more conservative (fewer false triggers / barge-ins), at the cost of needing a bit
+more deliberate speech.
 
 ## Not included
 
