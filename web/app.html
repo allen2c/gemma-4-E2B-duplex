@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemma-4-E2B-Duplex</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body data-state="idle">
+  <main class="app">
+    <header class="head">
+      <h1>Gemma-4-E2B-Duplex</h1>
+      <p class="tagline">Real-time full-duplex voice chat — talk over it any time to interrupt.</p>
+    </header>
+
+    <section id="transcript" class="transcript" aria-live="polite">
+      <div class="empty" id="empty">
+        <div class="orb-mini"></div>
+        <p>Press <strong>Start</strong> and just talk.</p>
+      </div>
+    </section>
+
+    <section class="stage">
+      <div class="orb" id="orb" aria-hidden="true"></div>
+      <p class="status" id="status">Not connected</p>
+    </section>
+
+    <footer class="controls">
+      <button id="start" class="btn primary">Start</button>
+      <button id="stop" class="btn ghost" hidden>Stop</button>
+      <form id="textform" class="composer" autocomplete="off">
+        <input id="textin" type="text" placeholder="…or type a message" disabled>
+        <button id="send" class="btn" type="submit" disabled>Send</button>
+      </form>
+    </footer>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

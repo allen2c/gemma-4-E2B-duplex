@@ -1,0 +1,185 @@
+/* Gemma-4-E2B-Duplex demo — minimal dark UI.
+   State lives on <body data-state="idle|connecting|listening|speaking">; the orb and status
+   colour follow it. Two semantic colours: listening = blue, speaking = purple. */
+
+:root {
+  --bg: #0e0f13;
+  --panel: rgba(255, 255, 255, 0.04);
+  --border: rgba(255, 255, 255, 0.09);
+  --text: #e7e9ee;
+  --muted: #8a90a0;
+  --in: #4f8ef7;    /* listening / user */
+  --out: #b06ad0;   /* speaking / assistant */
+  --accent: var(--muted);   /* current state colour, overridden per data-state */
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(1200px 800px at 50% -10%, #16181f, var(--bg));
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  justify-content: center;
+}
+
+body[data-state="connecting"] { --accent: #e6b450; }
+body[data-state="listening"]  { --accent: var(--in); }
+body[data-state="speaking"]   { --accent: var(--out); }
+
+.app {
+  width: 100%;
+  max-width: 720px;
+  min-height: 100vh;
+  padding: 28px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ---- header ---- */
+.head h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.tagline {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ---- transcript ---- */
+.transcript {
+  flex: 1;
+  min-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px;
+}
+.empty {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+}
+.orb-mini {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, var(--in), transparent 70%);
+  opacity: 0.6;
+}
+
+.msg { display: flex; flex-direction: column; gap: 4px; max-width: 82%; }
+.msg.user { align-self: flex-end; align-items: flex-end; }
+.msg.assistant { align-self: flex-start; }
+.who {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.body {
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.msg.user .body { background: color-mix(in srgb, var(--in) 20%, var(--panel)); }
+.msg.assistant .body { background: color-mix(in srgb, var(--out) 12%, var(--panel)); }
+
+/* ---- tool cards (parsed from the assistant text stream) ---- */
+.toolcard {
+  margin: 8px 0 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 13px;
+}
+.toolcard .tc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.toolcard .tc-name { font-weight: 600; }
+.toolcard .tc-tag {
+  margin-left: auto;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.toolcard code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  color: #cdd3e0;
+}
+.toolcard .tc-row { display: flex; gap: 8px; margin-top: 2px; }
+.toolcard .tc-k { color: var(--muted); min-width: 44px; }
+.toolchip {
+  display: inline-block;
+  margin: 4px 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+}
+.toolchip.abort { color: #e08a8a; }
+
+/* ---- stage: the orb + status line ---- */
+.stage { display: flex; align-items: center; gap: 14px; padding: 4px; }
+.orb {
+  --level: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, var(--accent), transparent 72%);
+  box-shadow: 0 0 calc(12px + var(--level) * 40px) color-mix(in srgb, var(--accent) 60%, transparent);
+  transform: scale(calc(1 + var(--level) * 0.5));
+  transition: transform 0.08s ease-out, background 0.3s;
+}
+body[data-state="connecting"] .orb { animation: pulse 1s ease-in-out infinite; }
+.status { margin: 0; color: var(--accent); font-size: 14px; font-weight: 500; }
+
+@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .orb { transition: none; transform: none; animation: none; }
+}
+
+/* ---- controls ---- */
+.controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.btn {
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.btn:hover { background: rgba(255, 255, 255, 0.08); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.primary { background: var(--in); border-color: transparent; color: #fff; }
+.btn.primary:hover { background: color-mix(in srgb, var(--in) 85%, #fff); }
+.btn.ghost { color: var(--muted); }
+
+.composer { flex: 1; min-width: 200px; display: flex; gap: 8px; }
+.composer input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font: inherit;
+}
+.composer input:disabled { opacity: 0.4; }
+.composer input:focus { outline: none; border-color: var(--accent); }
