@@ -1,0 +1,25 @@
+# gemma-4-E2B-duplex — inference-only demo dependencies.
+# Install with uv (recommended):
+#     uv venv && source .venv/bin/activate
+#     uv pip install -r requirements.txt
+#
+# Versions are the ones this demo is validated against. torch is floored at 2.11
+# (the GB10/sm_121 requirement); on aarch64 the PyPI wheel bundles CUDA 13, and on
+# x86 pip/uv resolve the matching CUDA build automatically — no extra index needed.
+
+# --- ML core ---
+torch>=2.11
+transformers==5.13.0          # Gemma4ForConditionalGeneration + AutoProcessor (audio front-end)
+peft==0.19                    # load the LoRA adapter from Hugging Face
+accelerate>=1.14              # required by from_pretrained(device_map="cuda")
+
+# --- audio / numerics ---
+numpy>=2
+soundfile>=0.14               # audio front-end I/O
+
+# --- TTS (cloud) ---
+cartesia[websockets]>=3.3.0   # sonic-3.5 speech synthesis over one shared websocket
+
+# --- web server ---
+fastapi[standard]>=0.136      # serves web/ + the /ws bridge; pulls in uvicorn + websockets
+python-dotenv>=1.2            # load .env (CARTESIA_API_KEY, CARTESIA_VOICE_ID, HF_MODEL)
