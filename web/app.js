@@ -26,6 +26,8 @@ function setState(s) { document.body.dataset.state = s; }
 function setStatus(text) { $("status").textContent = text; }
 
 // ============================ transcript ============================
+const EMPTY_HTML = $("transcript").innerHTML;   // pristine empty-state markup, restored on each Start
+function clearTranscript() { finalizeTurn(); $("transcript").innerHTML = EMPTY_HTML; }
 function addMsg(who, cls) {
   $("empty")?.remove();
   const d = document.createElement("div");
@@ -206,9 +208,11 @@ $("textform").addEventListener("submit", (e) => {
 
 // ============================ connect / stop ============================
 function connect() {
+  clearTranscript();   // each session starts with a clean history
   ensureOut();   // must be created inside the click handler to satisfy autoplay policy
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  const tts = $("tts").checked ? 1 : 0;
+  ws = new WebSocket(`${proto}://${location.host}/ws?tts=${tts}`);
   setState("connecting"); setStatus("Connecting…");
   $("start").hidden = true; $("stop").hidden = false;
   ws.onmessage = (e) => handleEvent(JSON.parse(e.data));
@@ -225,6 +229,31 @@ function reset() {
 }
 $("start").addEventListener("click", connect);
 $("stop").addEventListener("click", stop);
+
+// ============================ system prompt & tools (read-only modal) ============================
+let infoLoaded = false;
+async function loadInfo() {
+  try {
+    const d = await (await fetch("/info")).json();
+    $("info_prompt").textContent = d.system_prompt;
+    const box = $("info_tools"); box.innerHTML = "";
+    for (const tool of d.tools) {
+      const el = document.createElement("div"); el.className = "info-tool";
+      el.innerHTML = `<code></code><span class="desc"></span>`;
+      el.querySelector("code").textContent = tool.name;
+      el.querySelector(".desc").textContent = tool.description;
+      box.appendChild(el);
+    }
+  } catch (e) { $("info_prompt").textContent = "(failed to load /info)"; }
+}
+function openInfo(open) {
+  if (open && !infoLoaded) { loadInfo(); infoLoaded = true; }
+  $("info_modal").hidden = !open;
+}
+$("info_btn").addEventListener("click", () => openInfo(true));
+$("info_close").addEventListener("click", () => openInfo(false));
+$("info_scrim").addEventListener("click", () => openInfo(false));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") openInfo(false); });
 
 // ============================ boot ============================
 reset();

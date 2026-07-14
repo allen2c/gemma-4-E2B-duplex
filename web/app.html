@@ -9,8 +9,18 @@
 <body data-state="idle">
   <main class="app">
     <header class="head">
-      <h1>Gemma-4-E2B-Duplex</h1>
-      <p class="tagline">Real-time full-duplex voice chat — talk over it any time to interrupt.</p>
+      <div class="head-text">
+        <h1>Gemma-4-E2B-Duplex</h1>
+        <p class="tagline">Real-time full-duplex voice chat — talk over it any time to interrupt.</p>
+      </div>
+      <div class="head-actions">
+        <label class="toggle" title="Speak replies aloud (Cartesia TTS)">
+          <input type="checkbox" id="tts" checked>
+          <span class="toggle-track" aria-hidden="true"></span>
+          <span class="toggle-label">Voice</span>
+        </label>
+        <button type="button" id="info_btn" class="linkbtn">System prompt &amp; tools</button>
+      </div>
     </header>
 
     <section id="transcript" class="transcript" aria-live="polite">
@@ -34,6 +44,23 @@
       </form>
     </footer>
   </main>
+
+  <!-- read-only view of the trained system prompt + declared tools (fetched from /info) -->
+  <div id="info_modal" class="modal" hidden>
+    <div class="modal-scrim" id="info_scrim"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-label="System prompt and tools">
+      <div class="modal-head">
+        <span>System prompt &amp; tools <span class="ro-badge">read-only</span></span>
+        <button type="button" id="info_close" class="linkbtn" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <h3>System prompt</h3>
+        <pre id="info_prompt" class="info-prompt"></pre>
+        <h3>Tools</h3>
+        <div id="info_tools" class="info-tools"></div>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>

@@ -22,6 +22,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from engine import DuplexSession, EngineError, GemmaDuplexModel, SessionConfig, from_wire, to_wire
+from engine.gemma_duplex import INSTR, TOOLS
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -52,6 +53,16 @@ async def index() -> str:
     return page.read_text(encoding="utf-8") if page.exists() else "<h1>gemma-4-E2B-duplex</h1>"
 
 
+@app.get("/info")
+async def info() -> dict:
+    """Read-only view of how the demo is configured — the trained system prompt and declared tools.
+    Surfaced in the UI for transparency; the UI shows it but does not let the user edit it."""
+    return {
+        "system_prompt": INSTR,
+        "tools": [{"name": t["function"]["name"], "description": t["function"]["description"]} for t in TOOLS],
+    }
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -59,6 +70,7 @@ async def ws(websocket: WebSocket) -> None:
     tools_param = websocket.query_params.get("tools")   # comma-separated tool names; absent = all tools
     if tools_param is not None:
         cfg.extra["tools"] = [t for t in tools_param.split(",") if t]
+    tts_on = websocket.query_params.get("tts", "1") not in ("0", "false", "off")   # per-session TTS toggle
 
     model = websocket.app.state.model
     try:
@@ -66,7 +78,7 @@ async def ws(websocket: WebSocket) -> None:
         # so this connection — and any others — stay responsive while it prepares.
         state = await asyncio.to_thread(
             model.begin_session, system_prompt=cfg.system_prompt, voice=cfg.voice,
-            tools=cfg.extra.get("tools"))
+            tools=cfg.extra.get("tools"), tts=tts_on)
         session = DuplexSession(model, cfg, state)
     except Exception as e:
         logger.exception("failed to open session")

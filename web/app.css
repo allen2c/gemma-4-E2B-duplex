@@ -40,6 +40,13 @@ body[data-state="speaking"]   { --accent: var(--out); }
 }
 
 /* ---- header ---- */
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.head-actions { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 .head h1 {
   margin: 0;
   font-size: 22px;
@@ -182,3 +189,59 @@ body[data-state="connecting"] .orb { animation: pulse 1.1s ease-in-out infinite;
 }
 .composer input:disabled { opacity: 0.4; }
 .composer input:focus { outline: none; border-color: var(--accent); }
+
+/* ---- TTS toggle (flat switch) ---- */
+.toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--muted); }
+.toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.toggle-track {
+  width: 34px; height: 18px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15); position: relative; transition: background 0.2s;
+}
+.toggle-track::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  border-radius: 50%; background: #fff; transition: transform 0.2s;
+}
+.toggle input:checked + .toggle-track { background: var(--in); }
+.toggle input:checked + .toggle-track::after { transform: translateX(16px); }
+.toggle input:focus-visible + .toggle-track { outline: 2px solid var(--in); outline-offset: 2px; }
+
+.linkbtn {
+  background: none; border: none; color: var(--muted); font: inherit; font-size: 13px;
+  cursor: pointer; padding: 4px 6px;
+}
+.linkbtn:hover { color: var(--text); }
+
+/* ---- read-only info modal ---- */
+.modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal[hidden] { display: none; }
+.modal-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.6); }
+.modal-panel {
+  position: relative; width: min(92vw, 640px); max-height: 82vh; overflow-y: auto;
+  background: #14161d; border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px;
+}
+.modal-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 14px; font-weight: 600;
+}
+.ro-badge {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; margin-left: 6px;
+}
+.modal-body h3 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
+  margin: 16px 0 6px;
+}
+.modal-body h3:first-child { margin-top: 0; }
+.info-prompt {
+  white-space: pre-wrap; word-break: break-word; margin: 0;
+  background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
+  line-height: 1.6; color: #cdd3e0;
+}
+.info-tools { display: flex; flex-direction: column; gap: 6px; }
+.info-tool {
+  display: flex; gap: 10px; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--panel); font-size: 13px;
+}
+.info-tool code { font-family: ui-monospace, Menlo, monospace; color: var(--in); flex-shrink: 0; }
+.info-tool .desc { color: var(--muted); }
