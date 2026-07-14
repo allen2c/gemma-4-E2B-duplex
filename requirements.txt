@@ -9,6 +9,7 @@
 
 # --- ML core ---
 torch>=2.11
+torchvision>=0.20             # pulled in by Gemma4's (multimodal) image processor
 transformers==5.13.0          # Gemma4ForConditionalGeneration + AutoProcessor (audio front-end)
 peft==0.19                    # load the LoRA adapter from Hugging Face
 accelerate>=1.14              # required by from_pretrained(device_map="cuda")
@@ -16,6 +17,7 @@ accelerate>=1.14              # required by from_pretrained(device_map="cuda")
 # --- audio / numerics ---
 numpy>=2
 soundfile>=0.14               # audio front-end I/O
+pillow>=10                    # Gemma4Processor (multimodal) requires PIL even for audio-only use
 
 # --- TTS (cloud) ---
 cartesia[websockets]>=3.3.0   # sonic-3.5 speech synthesis over one shared websocket
