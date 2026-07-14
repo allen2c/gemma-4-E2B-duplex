@@ -25,6 +25,7 @@ import os
 import re
 import threading
 import time
+from typing import Any
 
 import numpy as np
 
@@ -140,12 +141,12 @@ class GemmaState:
     """Per-session state: KV cache, rolling audio/mel buffers, turn/tool state machines."""
 
     def __init__(self):
-        self.cache = None
+        self.cache: Any = None  # transformers DynamicCache (typed Any to stay torch-free at module level)
         self.abs_pos = 0        # logical position (monotonic, feeds cache_position / RoPE)
         self.raw = np.zeros(0, dtype=np.float32)   # rolling 16k float mic buffer (see raw_off)
         self.raw_off = 0                            # absolute sample index that raw[0] maps to
         self.total_samples = 0
-        self.mel = None                             # rolling mel buffer [1, T, 128] (cuda bf16)
+        self.mel: Any = None                        # rolling mel buffer [1, T, 128] (cuda bf16)
         self.mel_off = 0                            # absolute mel-frame index that mel[0] maps to
         self.k = 0                                  # frames processed so far
         self.t_stats = {"mel": [], "enc": [], "lm": []}  # per-stage ms (diagnostics)
@@ -166,8 +167,8 @@ class GemmaState:
         self.silent_run = 0                         # consecutive silent frames (silence freeze)
         self.open_nudge = 0                         # remaining wait-logit penalty frames
         self.spoke_since_user = False               # whether the model already answered since last speech
-        self.agc_rms = None                         # EMA of the user's voiced loudness (AGC)
-        self.noise_floor = None                     # adaptive noise floor (min-tracking, slow-up/fast-down)
+        self.agc_rms: float | None = None           # EMA of the user's voiced loudness (AGC)
+        self.noise_floor: float | None = None       # adaptive noise floor (min-tracking, slow-up/fast-down)
         self.voiced_run = 0                         # consecutive voiced frames (reply arming)
         self.speak_hold = 0
         self.tts: _CartesiaTTS | None = None
@@ -521,9 +522,9 @@ class _CartesiaTTS:
         self._client = Cartesia(api_key=os.environ["CARTESIA_API_KEY"])
         self._voice = {"mode": "id", "id": voice_id or os.environ["CARTESIA_VOICE_ID"]}
         self._fmt = {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 24000}
-        self._mgr = None
-        self._ws = None
-        self._ctx = None
+        self._mgr: Any = None
+        self._ws: Any = None
+        self._ctx: Any = None
         self._rx: threading.Thread | None = None
         self._buf = bytearray()
         self._lock = threading.Lock()
@@ -646,7 +647,8 @@ class _TrimLayer:
             def __init__(self):
                 super().__init__()
                 self._len = 0
-                self._kbuf = self._vbuf = None
+                self._kbuf: Any = None
+                self._vbuf: Any = None
 
             def update(self, key_states, value_states, *a, **k):
                 if not self.is_initialized:
