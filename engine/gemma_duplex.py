@@ -212,7 +212,7 @@ class GemmaDuplexModel:
         logger.info("gemma-duplex ready (prefix=%d tok, tts=%s)", len(self.prefix_ids), self._use_tts)
 
     def begin_session(self, *, system_prompt: str = "", voice: str | None = None,
-                      tools: list[str] | None = None) -> GemmaState:
+                      tools: list[str] | None = None, tts: bool = True) -> GemmaState:
         from transformers.cache_utils import DynamicCache, DynamicLayer
         torch = self.torch
         st = GemmaState()
@@ -227,7 +227,7 @@ class GemmaDuplexModel:
                              past_key_values=st.cache, use_cache=True,
                              cache_position=torch.arange(0, n, device="cuda"))
             st.abs_pos = n
-        if self._use_tts:
+        if self._use_tts and tts:            # tts: per-session toggle; _use_tts: globally available (key set)
             st.tts = _CartesiaTTS(voice_id=voice)
         return st
 
