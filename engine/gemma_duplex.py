@@ -35,6 +35,9 @@ logger = logging.getLogger(__name__)
 BASE = os.environ.get("GEMMA_BASE", "google/gemma-4-E2B-it")
 ADAPTER = os.environ.get("HF_MODEL", "dockhardman/gemma-4-E2B-duplex")
 
+# Cartesia sonic-3 speech speed (0.6–1.5). Default 1.5x for a snappier demo feel.
+TTS_SPEED = min(1.5, max(0.6, float(os.environ.get("CARTESIA_SPEED", "1.5"))))
+
 FRAME_S = 0.08
 SR = 16000
 FRAME_SAMPLES = int(SR * FRAME_S)          # 1280
@@ -81,18 +84,30 @@ INSTR = ("You are a real-time voice assistant. Below is the user's live speech s
 
 # Tool declarations. Descriptions are bilingual as trained (zh / en) — kept verbatim; load-bearing.
 TOOLS = [
-    {"type": "function", "function": {"name": "get_weather", "description": "查詢城市目前天氣 / get current weather of a city",
-     "parameters": {"type": "object", "properties": {"city": {"type": "string", "description": "城市名 / city"}}, "required": ["city"]}}},
-    {"type": "function", "function": {"name": "set_timer", "description": "設定倒數計時器 / set a countdown timer",
-     "parameters": {"type": "object", "properties": {"minutes": {"type": "string", "description": "分鐘數 / minutes"}}, "required": ["minutes"]}}},
-    {"type": "function", "function": {"name": "play_music", "description": "播放音樂 / play music by song or artist",
-     "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "歌名或歌手 / song or artist"}}, "required": ["query"]}}},
-    {"type": "function", "function": {"name": "turn_on_light", "description": "開燈 / turn on the light in a room",
-     "parameters": {"type": "object", "properties": {"room": {"type": "string", "description": "房間 / room"}}, "required": ["room"]}}},
-    {"type": "function", "function": {"name": "send_message", "description": "傳訊息給某人 / send a message to someone",
-     "parameters": {"type": "object", "properties": {"person": {"type": "string"}, "text": {"type": "string"}}, "required": ["person", "text"]}}},
-    {"type": "function", "function": {"name": "web_search", "description": "上網搜尋 / search the web",
-     "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
+    {"type": "function", "function": {
+        "name": "get_weather", "description": "查詢城市目前天氣 / get current weather of a city",
+        "parameters": {"type": "object", "required": ["city"],
+                       "properties": {"city": {"type": "string", "description": "城市名 / city"}}}}},
+    {"type": "function", "function": {
+        "name": "set_timer", "description": "設定倒數計時器 / set a countdown timer",
+        "parameters": {"type": "object", "required": ["minutes"],
+                       "properties": {"minutes": {"type": "string", "description": "分鐘數 / minutes"}}}}},
+    {"type": "function", "function": {
+        "name": "play_music", "description": "播放音樂 / play music by song or artist",
+        "parameters": {"type": "object", "required": ["query"],
+                       "properties": {"query": {"type": "string", "description": "歌名或歌手 / song or artist"}}}}},
+    {"type": "function", "function": {
+        "name": "turn_on_light", "description": "開燈 / turn on the light in a room",
+        "parameters": {"type": "object", "required": ["room"],
+                       "properties": {"room": {"type": "string", "description": "房間 / room"}}}}},
+    {"type": "function", "function": {
+        "name": "send_message", "description": "傳訊息給某人 / send a message to someone",
+        "parameters": {"type": "object", "required": ["person", "text"],
+                       "properties": {"person": {"type": "string"}, "text": {"type": "string"}}}}},
+    {"type": "function", "function": {
+        "name": "web_search", "description": "上網搜尋 / search the web",
+        "parameters": {"type": "object", "required": ["query"],
+                       "properties": {"query": {"type": "string"}}}}},
 ]
 
 CALL_RE = re.compile(r"call:(\w+)\{(.*)\}$")
@@ -400,16 +415,24 @@ class GemmaDuplexModel:
         return tok_id
 
     def _inject(self, state: GemmaState, block_ids: list[int]):
-        """Burst-inject input tokens (tool response / user text)."""
+        """Burst-inject input tokens (tool response / user text).
+
+        Feed all but the LAST token into the cache, and hand that last token to the next _lm_step as
+        prev_text. The old code fed everything and then predicted the next token into prev_text — but
+        that predicted token is the model's first real reply token, and stashing it in prev_text without
+        emitting it made the frame loop resume from the SECOND token, dropping the first word of every
+        injected reply (visible on tool-response summaries: "It's 28°" → "'s 28°"). Letting the normal
+        frame loop produce it from prev_text=<last injected token> emits it through the aggregator."""
         torch = self.torch
         ids = ([state.prev_text] if state.prev_text is not None else []) + block_ids
+        feed = ids[:-1]
         with torch.inference_mode():
-            cp = torch.arange(state.abs_pos, state.abs_pos + len(ids), device="cuda")
-            out = self.model.model(input_ids=torch.tensor([ids], device="cuda"),
-                                   past_key_values=state.cache, use_cache=True,
-                                   cache_position=cp)
-            state.abs_pos += len(ids)
-            state.prev_text = int(self.model.lm_head(out.last_hidden_state[:, -1]).argmax(-1))
+            if feed:
+                cp = torch.arange(state.abs_pos, state.abs_pos + len(feed), device="cuda")
+                self.model.model(input_ids=torch.tensor([feed], device="cuda"),
+                                 past_key_values=state.cache, use_cache=True, cache_position=cp)
+                state.abs_pos += len(feed)
+        state.prev_text = ids[-1]
 
     def _advance_frame(self, state: GemmaState) -> str:
         tok_id = self._lm_step(state, self._encode_frame(state))
@@ -526,16 +549,18 @@ class _CartesiaTTS:
     def send_segment(self, text: str, lang: str):
         if self._ctx is None:
             self.begin_turn()
+        gen_cfg = {"speed": TTS_SPEED, "volume": 1.0}
         try:
             self._ctx.send(model_id="sonic-3.5", transcript=text, voice=self._voice,
                            language=lang, output_format=self._fmt, continue_=True,
-                           flush=not self._first_sent)
+                           flush=not self._first_sent, generation_config=gen_cfg)
         except Exception:
             logger.warning("cartesia send failed — reconnecting", exc_info=True)
             self._connect()
             self.begin_turn()
             self._ctx.send(model_id="sonic-3.5", transcript=text, voice=self._voice,
-                           language=lang, output_format=self._fmt, continue_=True, flush=True)
+                           language=lang, output_format=self._fmt, continue_=True, flush=True,
+                           generation_config=gen_cfg)
         if not self._first_sent:
             self._first_sent = True
             ctx = self._ctx
