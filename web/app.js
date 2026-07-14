@@ -124,8 +124,10 @@ function floatToPCM16(f32) {
   return out;
 }
 async function startMic() {
+  // Laptop-mic hygiene: echo cancellation + noise suppression + browser AGC (autoGainControl) normalize
+  // a quiet built-in mic before it ever hits the wire. The engine applies a second, training-matched AGC.
   micStream = await navigator.mediaDevices.getUserMedia({
-    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
   micCtx = new (window.AudioContext || window.webkitAudioContext)();
   const src = micCtx.createMediaStreamSource(micStream);
   micAnalyser = micCtx.createAnalyser(); micAnalyser.fftSize = 1024; src.connect(micAnalyser);
