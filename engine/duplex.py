@@ -69,11 +69,13 @@ class DuplexModel(Protocol):
 class DuplexSession:
     """One live conversation: paces the model and bridges it to the browser event stream."""
 
-    def __init__(self, model: DuplexModel, config: SessionConfig) -> None:
+    def __init__(self, model: DuplexModel, config: SessionConfig, state=None) -> None:
         self.model = model
         self.config = config
-        self.state = model.begin_session(system_prompt=config.system_prompt, voice=config.voice,
-                                         tools=config.extra.get("tools"))
+        # `state` is normally begin_session()'d off the event loop by the caller (see app.py) — that
+        # GPU prefill + Cartesia connect/warm-up is blocking. Fall back to building it here if omitted.
+        self.state = state if state is not None else model.begin_session(
+            system_prompt=config.system_prompt, voice=config.voice, tools=config.extra.get("tools"))
         self._sr = config.input_sample_rate
         self._out_sr = config.output_sample_rate
         self._frame_bytes = max(2, int(self._sr * 2 / model.frame_rate_hz))

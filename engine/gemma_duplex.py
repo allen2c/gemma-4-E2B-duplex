@@ -65,9 +65,10 @@ AGC_TARGET = float(os.environ.get("GEMMA_AGC_TARGET", "0.12"))
 # window trimming (sink prefix / recent window / trigger length).
 KV_SINK, KV_RECENT, KV_TRIGGER = 512, 16000, 24000
 
-# The trained system prompt. NOTE: the adapter was trained with a Chinese instruction; this English
-# rendering is semantically equivalent but off the training distribution. If the model misbehaves
-# (won't open its turn / answers off-topic), the first thing to try is restoring the original prompt.
+# System prompt. The adapter was trained with a Chinese instruction; this is an English rendering for the
+# English demo. Verified equivalent in practice: conversation is clean, and tool-calling — which is
+# VOICE-triggered — still emits the correct <|tool_call> special tokens. INSTR language does not affect
+# the tool path (typed text never emits tool tokens regardless of language; speech always does).
 INSTR = ("You are a real-time voice assistant. Below is the user's live speech stream. Rules: "
          "while the user is still speaking, output <unused0> on every frame; "
          "once the user finishes, directly speak a short, conversational reply token by token; "
@@ -78,18 +79,19 @@ INSTR = ("You are a real-time voice assistant. Below is the user's live speech s
          "if a tool call is interrupted mid-emit, output <unused1> then close <tool_call|> (the call is "
          "voided), then output <unused0> and listen.")
 
+# Tool declarations. Descriptions are bilingual as trained (zh / en) — kept verbatim; load-bearing.
 TOOLS = [
-    {"type": "function", "function": {"name": "get_weather", "description": "get current weather of a city",
-     "parameters": {"type": "object", "properties": {"city": {"type": "string", "description": "city name"}}, "required": ["city"]}}},
-    {"type": "function", "function": {"name": "set_timer", "description": "set a countdown timer",
-     "parameters": {"type": "object", "properties": {"minutes": {"type": "string", "description": "minutes"}}, "required": ["minutes"]}}},
-    {"type": "function", "function": {"name": "play_music", "description": "play music by song or artist",
-     "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "song or artist"}}, "required": ["query"]}}},
-    {"type": "function", "function": {"name": "turn_on_light", "description": "turn on the light in a room",
-     "parameters": {"type": "object", "properties": {"room": {"type": "string", "description": "room"}}, "required": ["room"]}}},
-    {"type": "function", "function": {"name": "send_message", "description": "send a message to someone",
+    {"type": "function", "function": {"name": "get_weather", "description": "查詢城市目前天氣 / get current weather of a city",
+     "parameters": {"type": "object", "properties": {"city": {"type": "string", "description": "城市名 / city"}}, "required": ["city"]}}},
+    {"type": "function", "function": {"name": "set_timer", "description": "設定倒數計時器 / set a countdown timer",
+     "parameters": {"type": "object", "properties": {"minutes": {"type": "string", "description": "分鐘數 / minutes"}}, "required": ["minutes"]}}},
+    {"type": "function", "function": {"name": "play_music", "description": "播放音樂 / play music by song or artist",
+     "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "歌名或歌手 / song or artist"}}, "required": ["query"]}}},
+    {"type": "function", "function": {"name": "turn_on_light", "description": "開燈 / turn on the light in a room",
+     "parameters": {"type": "object", "properties": {"room": {"type": "string", "description": "房間 / room"}}, "required": ["room"]}}},
+    {"type": "function", "function": {"name": "send_message", "description": "傳訊息給某人 / send a message to someone",
      "parameters": {"type": "object", "properties": {"person": {"type": "string"}, "text": {"type": "string"}}, "required": ["person", "text"]}}},
-    {"type": "function", "function": {"name": "web_search", "description": "search the web",
+    {"type": "function", "function": {"name": "web_search", "description": "上網搜尋 / search the web",
      "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
 ]
 
@@ -271,15 +273,18 @@ class GemmaDuplexModel:
                 v.clear()
 
         pcm_out = state.tts.drain() if state.tts else b""
+        # tts_active stays True until Cartesia has fully sent this turn's audio, so a short reply whose
+        # speech is still in flight does not end the turn early (which would drop the trailing audio).
+        tts_active = state.tts.is_active() if state.tts else False
         busy = state.speaking or state.in_call or state.inject_at is not None
-        # is_speaking gets a short hold: Cartesia audio arrives in chunks, and the gaps between chunks
-        # should not be read as a falling edge (that would flicker the turn indicator).
-        if busy or pcm_out:
+        # is_speaking gets a short hold: audio arrives in chunks, and the gaps between chunks should
+        # not be read as a falling edge (that would flicker the turn indicator).
+        if busy or pcm_out or tts_active:
             state.speak_hold = 4                       # ~320ms
         else:
             state.speak_hold = max(0, state.speak_hold - 1)
         return OutputFrame(pcm=pcm_out, text="".join(text_out),
-                           is_speaking=busy or bool(pcm_out) or state.speak_hold > 0)
+                           is_speaking=busy or bool(pcm_out) or tts_active or state.speak_hold > 0)
 
     def reset_listen(self, state: GemmaState) -> None:
         if state.tts:
@@ -500,7 +505,9 @@ class _CartesiaTTS:
         self._buf = bytearray()
         self._lock = threading.Lock()
         self._first_sent = False
+        self._active = False        # True while Cartesia is still synthesizing/sending this turn's audio
         self._connect()
+        self._warmup()
 
     def begin_turn(self):
         # Liveness check: Cartesia closes idle connections after ~5 min, and sends on a dead one fail
@@ -514,6 +521,7 @@ class _CartesiaTTS:
             self._connect()
         self._ctx = self._ws.context()
         self._first_sent = False
+        self._active = True
 
     def send_segment(self, text: str, lang: str):
         if self._ctx is None:
@@ -541,6 +549,8 @@ class _CartesiaTTS:
                                 self._buf += a
                 except Exception:
                     pass                                    # cancel/close both land here; swallow quietly
+                finally:
+                    self._active = False                    # this turn's audio is fully received
 
             self._rx = threading.Thread(target=rx, daemon=True)
             self._rx.start()
@@ -554,6 +564,7 @@ class _CartesiaTTS:
             self._ctx = None
 
     def cancel(self):
+        self._active = False
         if self._ctx is not None:
             try:
                 self._ctx.cancel()
@@ -562,6 +573,10 @@ class _CartesiaTTS:
             self._ctx = None
         with self._lock:
             self._buf.clear()
+
+    def is_active(self) -> bool:
+        """True from begin_turn until this turn's audio is fully received (or cancelled)."""
+        return self._active
 
     def drain(self) -> bytes:
         with self._lock:
@@ -575,6 +590,17 @@ class _CartesiaTTS:
                 self._mgr.__exit__(None, None, None)
         except Exception:
             pass
+
+    def _warmup(self):
+        """Prime the connection + synth pipeline with a throwaway request so the first real turn's
+        time-to-first-audio is short. Runs at session start (off the event loop — see app.py)."""
+        try:
+            self.begin_turn()
+            self.send_segment(".", "en")
+            time.sleep(0.3)
+            self.cancel()
+        except Exception:
+            logger.debug("cartesia warmup skipped", exc_info=True)
 
     def _connect(self):
         self._mgr = self._client.tts.websocket_connect()
