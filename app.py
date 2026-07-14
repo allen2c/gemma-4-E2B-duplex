@@ -60,8 +60,14 @@ async def ws(websocket: WebSocket) -> None:
     if tools_param is not None:
         cfg.extra["tools"] = [t for t in tools_param.split(",") if t]
 
+    model = websocket.app.state.model
     try:
-        session = DuplexSession(websocket.app.state.model, cfg)
+        # begin_session is blocking (GPU prefill + Cartesia connect/warm-up); run it off the event loop
+        # so this connection — and any others — stay responsive while it prepares.
+        state = await asyncio.to_thread(
+            model.begin_session, system_prompt=cfg.system_prompt, voice=cfg.voice,
+            tools=cfg.extra.get("tools"))
+        session = DuplexSession(model, cfg, state)
     except Exception as e:
         logger.exception("failed to open session")
         await websocket.send_json(to_wire(EngineError(message=str(e))))
